@@ -1,0 +1,61 @@
+name: Frontend Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
+          DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_PORT: ${{ vars.FRONTEND_PORT || '8081' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE,DEPLOY_PATH,GHCR_USERNAME,GHCR_TOKEN,FRONTEND_PORT
+          script: |
+            set -eu
+            cd "$DEPLOY_PATH"
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            export IMAGE FRONTEND_PORT
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:${FRONTEND_PORT}/healthz

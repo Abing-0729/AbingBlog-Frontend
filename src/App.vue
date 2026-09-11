@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { siteConfig } from './config/site'
+import { mockPosts, mockProjects } from './data/mock'
 
 type Section = 'home' | 'posts' | 'projects' | 'about' | 'settings'
 
@@ -15,6 +17,23 @@ const fontSize = ref(15)
 const staticCanvas = ref<HTMLCanvasElement | null>(null)
 const coinDoor = ref<HTMLElement | null>(null)
 const rollingCoin = ref<HTMLElement | null>(null)
+const adminLoginOpen = ref(false)
+const adminUsername = ref('')
+const adminPassword = ref('')
+const loginError = ref('')
+const loggingIn = ref(false)
+const controlFeedback = ref('SYSTEM READY')
+const activeControl = ref('')
+const startCount = ref(0)
+const startRecorded = ref(false)
+const screenThemeIndex = ref(0)
+const screenCopyIndex = ref(0)
+const screenThemes = ['mono', 'amber', 'blue'] as const
+const screenCopies = [
+  { title: 'READY', subtitle: "a developer's field notes, projects and experiments" },
+  { title: 'SYSTEM', subtitle: 'quiet tools, reliable systems, useful notes' },
+  { title: 'FIELD', subtitle: 'building small things that survive first contact' },
+]
 let staticFrame = 0
 
 function alignCoinToSlot() {
@@ -40,12 +59,65 @@ const sections: { id: Section; label: string; command: string }[] = [
 
 const promptPath = computed(() => current.value === 'home' ? '~' : `~/${current.value}`)
 
-function enterSystem() {
+async function enterSystem() {
   if (booting.value || !arcadeReady.value) return
   booting.value = true
+  if (!startRecorded.value) {
+    startRecorded.value = true
+    try {
+      const response = await fetch(`${siteConfig.apiBaseUrl}/visits/start`, { method: 'POST' })
+      const payload = await response.json() as { code: number; data?: { start_count: number } }
+      if (response.ok && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+    } catch {
+      startCount.value += 1
+    }
+  }
+  controlFeedback.value = 'SYSTEM ENTERED'
   window.setTimeout(() => {
     inArcade.value = false
   }, motion.value ? 1000 : 0)
+}
+
+function openAdminLogin() {
+  if (booting.value || !arcadeReady.value) return
+  adminLoginOpen.value = true
+  loginError.value = ''
+}
+
+function activateControl(control: 'joystick' | 'a' | 'b') {
+  activeControl.value = control
+  if (control === 'joystick') {
+    screenThemeIndex.value = (screenThemeIndex.value + 1) % screenThemes.length
+    controlFeedback.value = `${screenThemes[screenThemeIndex.value].toUpperCase()} CRT PROFILE`
+  } else {
+    screenCopyIndex.value = (screenCopyIndex.value + (control === 'a' ? 1 : screenCopies.length - 1)) % screenCopies.length
+    controlFeedback.value = control === 'a' ? 'TEXT CHANNEL NEXT' : 'TEXT CHANNEL PREV'
+  }
+  window.setTimeout(() => { activeControl.value = '' }, 180)
+}
+
+async function loginAdmin() {
+  if (!adminUsername.value || !adminPassword.value || loggingIn.value) return
+  loggingIn.value = true
+  loginError.value = ''
+  try {
+    const response = await fetch(`${siteConfig.apiBaseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: adminUsername.value, password: adminPassword.value }),
+    })
+    const payload = await response.json() as { code: number; message: string; data?: { token: string; expires_in: number } }
+    if (!response.ok || payload.code !== 0 || !payload.data?.token) throw new Error(payload.message || '登录失败')
+    localStorage.setItem('abing_access_token', payload.data.token)
+    localStorage.setItem('abing_access_token_expires_at', String(Date.now() + payload.data.expires_in * 1000))
+    adminLoginOpen.value = false
+    inArcade.value = false
+    current.value = 'home'
+  } catch (error) {
+    loginError.value = error instanceof Error ? error.message : '登录失败，请稍后重试'
+  } finally {
+    loggingIn.value = false
+  }
 }
 
 function navigate(section: Section) {
@@ -73,6 +145,8 @@ function replayIntro() {
   inArcade.value = true
   arcadeReady.value = false
   booting.value = false
+  startRecorded.value = false
+  controlFeedback.value = 'SYSTEM READY'
   nextTick(() => {
     alignCoinToSlot()
     startStaticCanvas()
@@ -140,36 +214,47 @@ onBeforeUnmount(() => {
           <div class="speaker-grille speaker-right" aria-hidden="true"><i v-for="n in 21" :key="n"></i></div>
           <span class="cabinet-bolt bolt-one" aria-hidden="true"></span><span class="cabinet-bolt bolt-two" aria-hidden="true"></span>
           <div class="screen-bezel">
-            <div class="arcade-screen">
+            <div class="arcade-screen" :class="`screen-theme-${screenThemes[screenThemeIndex]}`">
               <div class="screen-corners"></div>
               <div v-if="!arcadeReady" class="static-screen" aria-live="polite"><canvas ref="staticCanvas" class="static-canvas" aria-hidden="true"></canvas><div></div><p>COIN ACCEPTED</p><small>SYNCING CRT SIGNAL...</small></div>
               <template v-else>
                 <p class="eyebrow">PERSONAL COMPUTING UNIT</p>
-                <h1 id="arcade-title">READY<br />PLAYER 01</h1>
-                <p class="screen-subtitle">a developer's field notes, projects and experiments</p>
+                <h1 id="arcade-title">{{ screenCopies[screenCopyIndex].title }}<br />PLAYER {{ String(startCount).padStart(3, '0') }}</h1>
+                <p class="screen-subtitle">{{ screenCopies[screenCopyIndex].subtitle }}</p>
                 <button class="start-button" type="button" @click="enterSystem">
                   <span class="button-mark">▶</span>
                   {{ booting ? 'INITIALIZING...' : 'PRESS START' }}
                 </button>
-                <p class="screen-status">SYSTEM READY <span class="pulse-dot"></span></p>
+                <p class="screen-status">{{ controlFeedback }} <span class="pulse-dot"></span></p>
               </template>
             </div>
           </div>
           <div class="control-deck">
-            <div class="joystick" aria-hidden="true"><span></span></div>
-            <div class="deck-instruction" aria-hidden="true"><b>PLAYER 01</b><small>USE WITH INTENT</small></div>
-            <div class="deck-blank" aria-hidden="true"><i></i><span>CREDIT 01</span></div>
+            <button class="mechanical-stick" :class="{ active: activeControl === 'joystick' }" type="button" aria-label="Direction control" @click="activateControl('joystick')"><span class="stick-ball"></span><span class="stick-shaft"></span><span class="stick-collar"></span><span class="stick-base"></span><small>DIRECTION</small></button>
+            <div class="deck-instruction" aria-hidden="true"><b>INPUT / 01</b><small>SELECT A PATH</small></div>
+            <div class="control-buttons"><button class="control-button control-button-primary" :class="{ active: activeControl === 'a' }" type="button" aria-label="A control" @click="activateControl('a')"></button><button class="control-button" :class="{ active: activeControl === 'b' }" type="button" aria-label="B control" @click="activateControl('b')"></button><small aria-hidden="true">A / B</small></div>
             <div class="deck-label">ABING / NODE 01</div>
           </div>
           <div class="lower-cabinet">
-            <div ref="coinDoor" class="coin-door" aria-hidden="true"><div ref="rollingCoin" class="rolling-coin"><span>1</span></div><div class="coin-hand"><span></span><i></i><b></b></div><span class="coin-return"></span><i></i><small>INSERT COIN</small><em></em></div>
-            <div class="service-label" aria-hidden="true"><b>ABING SYSTEMS</b><span>MODEL A-01</span><small>NO SERVICEABLE PARTS INSIDE</small></div>
+            <div ref="coinDoor" class="coin-door" aria-hidden="true"><div ref="rollingCoin" class="rolling-coin"><span>1</span></div><span class="coin-return"></span><i></i><small>INSERT COIN</small><em></em></div>
+            <div class="service-label" aria-hidden="true" @dblclick="openAdminLogin"><b>ABING SYSTEMS</b><span>MODEL A-01</span><small>NO SERVICEABLE PARTS INSIDE</small></div>
             <div class="ventilation" aria-hidden="true"><i v-for="n in 8" :key="n"></i></div>
           </div>
         </div>
         <div class="machine-foot"><span></span><i></i><span></span></div>
       </div>
       <p class="entry-instruction">ONE CREDIT REQUIRED · START FROM SCREEN</p>
+      <div v-if="adminLoginOpen" class="admin-login" role="dialog" aria-modal="true" aria-labelledby="admin-login-title">
+        <button class="admin-login-close" type="button" aria-label="Close administrator login" @click="adminLoginOpen = false">×</button>
+        <p class="eyebrow">SERVICE ACCESS / NODE 01</p>
+        <h2 id="admin-login-title">ADMIN LOGIN</h2>
+        <form @submit.prevent="loginAdmin">
+          <label>USERNAME<input v-model="adminUsername" name="username" autocomplete="username" required /></label>
+          <label>PASSWORD<input v-model="adminPassword" name="password" type="password" autocomplete="current-password" required /></label>
+          <p v-if="loginError" class="login-error" role="alert">{{ loginError }}</p>
+          <button class="admin-submit" type="submit" :disabled="loggingIn">{{ loggingIn ? 'AUTHENTICATING...' : 'CONNECT' }}</button>
+        </form>
+      </div>
     </section>
 
     <section v-else class="terminal-workspace" :class="{ 'with-scanlines': scanlines }">
@@ -205,9 +290,9 @@ onBeforeUnmount(() => {
             <div class="directory-list"><p class="eyebrow">INDEX</p><button v-for="section in sections.slice(1)" :key="section.id" type="button" @click="navigate(section.id)"><span>{{ section.label }}/</span><small>{{ section.command }}</small><b>↗</b></button></div>
             </section>
 
-            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / POSTS</p><h2>WRITING</h2><span>04 ENTRIES</span></div><article v-for="post in [{date:'2026.09.06',title:'把个人博客做成一个可阅读的系统',tag:'DESIGN'},{date:'2026.08.21',title:'从消息队列开始理解异步系统',tag:'ENGINEERING'},{date:'2026.08.03',title:'我的 Vue 组件边界准则',tag:'FRONTEND'},{date:'2026.07.16',title:'Docker Compose: 本地开发的基础设施',tag:'DEVOPS'}]" :key="post.title" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="Open post">↗</button></article></section>
+            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / POSTS</p><h2>WRITING</h2><span>{{ mockPosts.length.toString().padStart(2, '0') }} ENTRIES</span></div><article v-for="post in mockPosts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="Open post">↗</button></article></section>
 
-            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / PROJECTS</p><h2>SELECTED WORK</h2><span>03 REPOSITORIES</span></div><article v-for="project in [{name:'ABINGBLOG',detail:'A full-stack blog system with a terminal-first interface.',stack:'GO · VUE · MYSQL'},{name:'QUEUE LAB',detail:'Visual notes and experiments around message-driven services.',stack:'GO · REDIS · RABBITMQ'},{name:'TINY STATE',detail:'A minimal state machine for deliberate UI transitions.',stack:'TYPESCRIPT'}]" :key="project.name" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="Open repository">↗</button></article></section>
+            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / PROJECTS</p><h2>SELECTED WORK</h2><span>{{ mockProjects.length.toString().padStart(2, '0') }} REPOSITORIES</span></div><article v-for="project in mockProjects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="Open repository">↗</button></article></section>
 
             <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">FILE / ABOUT.MD</p><h2>HELLO, I'M<br />ABING.</h2><div><p>I am a developer interested in dependable backend systems and calm, precise interfaces.</p><p>This is where I document the work: what I am making, how the pieces fit, and the lessons that survive the first implementation.</p><a href="mailto:hello@example.com">hello@example.com ↗</a></div></section>
 
