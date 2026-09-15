@@ -2,16 +2,19 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { siteConfig } from './config/site'
 import { contentService } from './services/content'
+import { clearSession } from './services/admin'
+import AdminView from './admin/AdminView.vue'
 import type { PostSummary, ProjectSummary } from './types/content'
 
 type Section = 'home' | 'posts' | 'projects' | 'about' | 'settings'
 
 const inArcade = ref(true)
+const isAdminMode = ref(false)
 const booting = ref(false)
 const arcadeReady = ref(false)
 const current = ref<Section>('home')
 const command = ref('')
-const commandLog = ref<string[]>(['$ ls', 'about/  posts/  projects/  notes/  archive/', ''])
+const commandLog = ref<string[]>(['$ ls', 'about/  posts/  projects/', ''])
 const scanlines = ref(true)
 const motion = ref(true)
 const fontSize = ref(15)
@@ -82,10 +85,10 @@ function alignCoinToSlot() {
 }
 
 const sections: { id: Section; label: string; command: string }[] = [
-  { id: 'home', label: 'home', command: 'cd ~' },
-  { id: 'posts', label: 'posts', command: 'cd posts' },
-  { id: 'projects', label: 'projects', command: 'cd projects' },
-  { id: 'about', label: 'about', command: 'cat about.md' },
+  { id: 'home', label: '首页', command: 'cd ~' },
+  { id: 'posts', label: '文章', command: 'cd posts' },
+  { id: 'projects', label: '项目', command: 'cd projects' },
+  { id: 'about', label: '关于', command: 'cat about.md' },
 ]
 
 const promptPath = computed(() => current.value === 'home' ? '~' : `~/${current.value}`)
@@ -141,18 +144,31 @@ async function loginAdmin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: adminUsername.value, password: adminPassword.value }),
     })
-    const payload = await response.json() as { code: number; message: string; data?: { token: string; expires_in: number } }
+    // 后端只返回 token（无 expires_in），过期靠 admin 请求的 401 兜底
+    const payload = await response.json() as { code: number; message: string; data?: { token: string } }
     if (!response.ok || payload.code !== 0 || !payload.data?.token) throw new Error(payload.message || '登录失败')
     localStorage.setItem('abing_access_token', payload.data.token)
-    localStorage.setItem('abing_access_token_expires_at', String(Date.now() + payload.data.expires_in * 1000))
     adminLoginOpen.value = false
-    inArcade.value = false
-    current.value = 'home'
+    isAdminMode.value = true
   } catch (error) {
     loginError.value = error instanceof Error ? error.message : '登录失败，请稍后重试'
   } finally {
     loggingIn.value = false
   }
+}
+
+// 退出后台：清 token，回街机入口（replayIntro 会重拉访客总量）
+function logoutAdmin() {
+  clearSession()
+  isAdminMode.value = false
+  replayIntro()
+}
+
+// 返回公开站点：token 保留，之后想再进后台需重新走登录
+function backToSite() {
+  isAdminMode.value = false
+  inArcade.value = false
+  current.value = 'home'
 }
 
 function navigate(section: Section) {
@@ -166,14 +182,14 @@ function submitCommand() {
   commandLog.value.push(`$ ${command.value}`)
   command.value = ''
 
-  if (raw === 'help') commandLog.value.push('commands: home, posts, projects, about, clear, settings')
+  if (raw === 'help') commandLog.value.push('可用命令：home 首页 / posts 文章 / projects 项目 / about 关于 / settings 设置 / clear 清屏')
   else if (raw === 'clear') commandLog.value = []
   else if (raw === 'home' || raw === 'cd ~') navigate('home')
   else if (raw.includes('post')) navigate('posts')
   else if (raw.includes('project')) navigate('projects')
   else if (raw.includes('about')) navigate('about')
   else if (raw.includes('setting')) navigate('settings')
-  else commandLog.value.push(`command not found: ${raw}. try "help"`)
+  else commandLog.value.push(`未找到命令：${raw}。试试 "help"`)
 }
 
 function replayIntro() {
@@ -239,7 +255,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="site-shell" :class="{ 'no-motion': !motion }" :style="{ '--terminal-size': `${fontSize}px` }">
+  <AdminView v-if="isAdminMode" @logout="logoutAdmin" @back="backToSite" />
+  <main v-else class="site-shell" :class="{ 'no-motion': !motion }" :style="{ '--terminal-size': `${fontSize}px` }">
     <section v-if="inArcade" class="arcade-entry" aria-labelledby="arcade-title">
       <div class="entry-noise"></div>
       <header class="entry-meta"><span>ABING SYSTEMS</span><span>EST. 2026</span></header>
@@ -296,53 +313,53 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else class="terminal-workspace" :class="{ 'with-scanlines': scanlines }">
-      <aside class="rail" aria-label="Primary navigation">
-        <a class="rail-logo" href="#" title="Go home" @click.prevent="navigate('home')">A<span>/</span></a>
+      <aside class="rail" aria-label="主导航">
+        <a class="rail-logo" href="#" title="返回首页" @click.prevent="navigate('home')">A<span>/</span></a>
         <nav>
           <button v-for="section in sections" :key="section.id" :class="{ active: current === section.id }" type="button" :title="section.label" @click="navigate(section.id)">
             <span class="nav-index">0{{ sections.indexOf(section) + 1 }}</span><span>{{ section.label }}</span>
           </button>
         </nav>
-        <button class="rail-settings" :class="{ active: current === 'settings' }" type="button" title="Display settings" @click="navigate('settings')">◎</button>
+        <button class="rail-settings" :class="{ active: current === 'settings' }" type="button" title="显示设置" @click="navigate('settings')">◎</button>
       </aside>
 
       <div class="terminal-main">
         <header class="terminal-topbar">
           <div class="crumb"><span class="live-dot"></span> abing@blog:<b>{{ promptPath }}</b>$</div>
-          <div class="topbar-actions"><span>UTC+8</span><span>SYS ONLINE</span><button type="button" title="Replay arcade intro" @click="replayIntro">↗</button></div>
+          <div class="topbar-actions"><span>UTC+8</span><span>系统在线</span><button type="button" title="重播启动动画" @click="replayIntro">↗</button></div>
         </header>
 
         <div class="terminal-scroll">
           <div class="content-column">
             <div class="terminal-intro">
               <p>ABING OS 0.1.0 <span>linux / x86_64</span></p>
-              <p>Welcome back. Type <button type="button" @click="command = 'help'; submitCommand()">help</button> for available commands.</p>
+              <p>欢迎访问。输入 <button type="button" @click="command = 'help'; submitCommand()">help</button> 查看可用命令。</p>
             </div>
 
             <section v-if="current === 'home'" class="home-view">
-            <div class="home-heading"><p class="eyebrow">CURRENT DIRECTORY</p><h2>FIELD NOTES</h2><p>Building systems, interfaces and small things worth keeping.</p></div>
+            <div class="home-heading"><p class="eyebrow">当前目录</p><h2>最新笔记</h2><p>构建系统、界面，以及值得留下的小东西。</p></div>
             <div class="feature-grid">
-              <article class="feature-note large-note" @click="navigate('posts')"><span class="note-label">LATEST / 2026.09.06</span><h3>把个人博客做成<br />一个可阅读的系统</h3><p>关于克制的交互、内容优先，以及为什么入口不该抢走文章的注意力。</p><span class="note-link">READ ENTRY ↗</span></article>
-              <article class="feature-note status-note"><span class="note-label">NOW</span><dl><div><dt>BUILDING</dt><dd>AbingBlog</dd></div><div><dt>STACK</dt><dd>Go / Vue / MySQL</dd></div><div><dt>LISTENING</dt><dd>Deep Focus</dd></div></dl></article>
+              <article class="feature-note large-note" @click="navigate('posts')"><span class="note-label">最新 / 2026.09.06</span><h3>把个人博客做成<br />一个可阅读的系统</h3><p>关于克制的交互、内容优先，以及为什么入口不该抢走文章的注意力。</p><span class="note-link">阅读全文 ↗</span></article>
+              <article class="feature-note status-note"><span class="note-label">现在</span><dl><div><dt>在做</dt><dd>AbingBlog</dd></div><div><dt>技术栈</dt><dd>Go / Vue / MySQL</dd></div><div><dt>在听</dt><dd>Deep Focus</dd></div></dl></article>
             </div>
-            <div class="directory-list"><p class="eyebrow">INDEX</p><button v-for="section in sections.slice(1)" :key="section.id" type="button" @click="navigate(section.id)"><span>{{ section.label }}/</span><small>{{ section.command }}</small><b>↗</b></button></div>
+            <div class="directory-list"><p class="eyebrow">索引</p><button v-for="section in sections.slice(1)" :key="section.id" type="button" @click="navigate(section.id)"><span>{{ section.label }}/</span><small>{{ section.command }}</small><b>↗</b></button></div>
             </section>
 
-            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / POSTS</p><h2>WRITING</h2><span>{{ posts.length.toString().padStart(2, '0') }} ENTRIES</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">NO ENTRIES YET</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="Open post">↗</button></article></section>
+            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 文章</p><h2>文章</h2><span>共 {{ posts.length }} 篇</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">暂无文章</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="打开文章" aria-label="打开文章">↗</button></article></section>
 
-            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / PROJECTS</p><h2>SELECTED WORK</h2><span>{{ projects.length.toString().padStart(2, '0') }} REPOSITORIES</span></div><article v-for="project in projects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="Open repository">↗</button></article></section>
+            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="打开仓库" aria-label="打开仓库">↗</button></article></section>
 
-            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">FILE / ABOUT.MD</p><h2>HELLO, I'M<br />ABING.</h2><div><p>I am a developer interested in dependable backend systems and calm, precise interfaces.</p><p>This is where I document the work: what I am making, how the pieces fit, and the lessons that survive the first implementation.</p><a href="mailto:hello@example.com">hello@example.com ↗</a></div></section>
+            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />ABING.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过第一版实现的教训。</p><a href="mailto:hello@example.com">hello@example.com ↗</a></div></section>
 
-            <section v-else class="settings-view"><div class="view-title"><p class="eyebrow">SYSTEM / DISPLAY</p><h2>SETTINGS</h2></div><label class="setting-row"><span>SCANLINES</span><input v-model="scanlines" type="checkbox" /><i></i></label><label class="setting-row"><span>ANIMATION</span><input v-model="motion" type="checkbox" /><i></i></label><label class="setting-row range-row"><span>FONT SIZE <b>{{ fontSize }}PX</b></span><input v-model="fontSize" type="range" min="13" max="19" /></label><button class="reset-intro" type="button" @click="replayIntro">REPLAY STARTUP SEQUENCE</button></section>
+            <section v-else class="settings-view"><div class="view-title"><p class="eyebrow">系统 / 显示</p><h2>设置</h2></div><label class="setting-row"><span>扫描线</span><input v-model="scanlines" type="checkbox" /><i></i></label><label class="setting-row"><span>动画</span><input v-model="motion" type="checkbox" /><i></i></label><label class="setting-row range-row"><span>字号 <b>{{ fontSize }}PX</b></span><input v-model="fontSize" type="range" min="13" max="19" /></label><button class="reset-intro" type="button" @click="replayIntro">重播启动动画</button></section>
           </div>
-          <aside class="command-panel" aria-label="Command output">
-            <div class="command-panel-head"><span>COMMAND OUTPUT</span><i></i></div>
+          <aside class="command-panel" aria-label="命令输出">
+            <div class="command-panel-head"><span>命令输出</span><i></i></div>
             <div class="command-log" aria-live="polite"><p v-for="(line, index) in commandLog" :key="index">{{ line }}</p></div>
-            <div class="command-panel-foot"><span>LAST ACTION</span><b>{{ current.toUpperCase() }}</b></div>
+            <div class="command-panel-foot"><span>当前目录</span><b>{{ promptPath }}</b></div>
           </aside>
         </div>
-        <form class="command-bar" @submit.prevent="submitCommand"><span>abing@blog:{{ promptPath }}$</span><input v-model="command" aria-label="Terminal command" autocomplete="off" placeholder="type a command" /><b></b></form>
+        <form class="command-bar" @submit.prevent="submitCommand"><span>abing@blog:{{ promptPath }}$</span><input v-model="command" aria-label="终端命令" autocomplete="off" placeholder="输入命令" /><b></b></form>
       </div>
     </section>
   </main>
