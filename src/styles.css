@@ -27,6 +27,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .arcade-screen > * { position: relative; z-index: 1; }
 .arcade-screen .eyebrow { color: #3e453d; }
 .arcade-screen h1 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(48px, 9vw, 78px); line-height: .85; letter-spacing: 0; }
+.visit-count { display: inline-block; }
+.visit-count.bump { animation: count-bump .6s ease-out; }
+@keyframes count-bump { 0% { transform: scale(1); } 30% { transform: scale(1.35); color: #4d7a30; } 100% { transform: scale(1); } }
+.no-motion .visit-count.bump { animation: none; }
 .static-screen { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 12px; background: #777d73; color: #dfe5d6; overflow: hidden; }.static-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: .75; }.static-screen::after { position: absolute; inset: 0; content: ""; background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(22, 27, 21, .45) 4px 5px); }.static-screen > *:not(.static-canvas) { position: relative; z-index: 1; }.static-screen div { width: 40px; height: 40px; border: 2px solid #c8d0be; border-radius: 50%; border-right-color: transparent; animation: static-spin .7s linear infinite; }.static-screen p { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0; }.static-screen small { color: #c0c9b9; font-size: 8px; }
 .screen-subtitle { max-width: 294px; margin: 2px 0 6px; font-size: 11px; line-height: 1.6; }
 .start-button { display: inline-flex; align-items: center; gap: 9px; padding: 10px 15px; border: 1px solid #252a25; border-radius: 0; background: #1c201c; color: #e3f550; font-size: 11px; font-weight: 600; letter-spacing: 0; transition: transform .15s, background .15s; }

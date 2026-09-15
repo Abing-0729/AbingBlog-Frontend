@@ -24,6 +24,17 @@ interface ArticleListData {
   }>
 }
 
+interface ProjectListData {
+  list: Array<{
+    slug: string
+    name: string
+    detail: string
+    stack: string
+    github_url?: string
+    demo_url?: string
+  }>
+}
+
 export const mockContentService: ContentService = {
   async listPosts() { return mockPosts },
   async listProjects() { return mockProjects },
@@ -48,7 +59,21 @@ export function createApiContentService(fetcher: typeof fetch = fetch): ContentS
         summary: article.summary,
       }))
     },
-    // Projects are mock-only until the backend adds GET /projects.
-    listProjects: () => get<ProjectSummary[]>('/projects'),
+    async listProjects() {
+      const data = await get<ProjectListData>('/projects?page=1&page_size=10')
+      return data.list.map((project) => ({
+        slug: project.slug,
+        name: project.name,
+        detail: project.detail,
+        stack: project.stack,
+        githubUrl: project.github_url,
+        demoUrl: project.demo_url,
+      }))
+    },
   }
 }
+
+// 根据 VITE_USE_MOCK 开关选择数据来源：true 用 mock，false 调后端。
+export const contentService: ContentService = siteConfig.useMockData
+  ? mockContentService
+  : createApiContentService()

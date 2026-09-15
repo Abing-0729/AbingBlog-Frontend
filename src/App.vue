@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { siteConfig } from './config/site'
-import { mockPosts, mockProjects } from './data/mock'
+import { contentService } from './services/content'
+import type { PostSummary, ProjectSummary } from './types/content'
 
 type Section = 'home' | 'posts' | 'projects' | 'about' | 'settings'
 
@@ -26,6 +27,36 @@ const controlFeedback = ref('SYSTEM READY')
 const activeControl = ref('')
 const startCount = ref(0)
 const startRecorded = ref(false)
+const countBump = ref(false)
+
+// 进入街机屏幕时读取总浏览量（只读，不自增）。
+async function loadVisitTotal() {
+  try {
+    const response = await fetch(`${siteConfig.apiBaseUrl}/visits`)
+    const payload = await response.json() as { code: number; data?: { start_count: number } }
+    if (response.ok && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+  } catch {
+    // 拿不到总量就保持 0，点 START 时仍会本地兜底 +1。
+  }
+}
+
+const posts = ref<PostSummary[]>([])
+const projects = ref<ProjectSummary[]>([])
+const contentError = ref('')
+
+async function loadContent() {
+  contentError.value = ''
+  try {
+    const [postList, projectList] = await Promise.all([
+      contentService.listPosts(),
+      contentService.listProjects(),
+    ])
+    posts.value = postList
+    projects.value = projectList
+  } catch (error) {
+    contentError.value = error instanceof Error ? error.message : '内容加载失败'
+  }
+}
 const screenThemeIndex = ref(0)
 const screenCopyIndex = ref(0)
 const screenThemes = ['mono', 'amber', 'blue'] as const
@@ -68,9 +99,13 @@ async function enterSystem() {
       const response = await fetch(`${siteConfig.apiBaseUrl}/visits/start`, { method: 'POST' })
       const payload = await response.json() as { code: number; data?: { start_count: number } }
       if (response.ok && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+      else startCount.value += 1
     } catch {
       startCount.value += 1
     }
+    // 触发数字 +1 的弹跳动画。
+    countBump.value = true
+    window.setTimeout(() => { countBump.value = false }, 600)
   }
   controlFeedback.value = 'SYSTEM ENTERED'
   window.setTimeout(() => {
@@ -101,7 +136,7 @@ async function loginAdmin() {
   loggingIn.value = true
   loginError.value = ''
   try {
-    const response = await fetch(`${siteConfig.apiBaseUrl}/auth/login`, {
+    const response = await fetch(`${siteConfig.apiBaseUrl}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: adminUsername.value, password: adminPassword.value }),
@@ -147,6 +182,7 @@ function replayIntro() {
   booting.value = false
   startRecorded.value = false
   controlFeedback.value = 'SYSTEM READY'
+  loadVisitTotal()
   nextTick(() => {
     alignCoinToSlot()
     startStaticCanvas()
@@ -185,6 +221,8 @@ function startStaticCanvas() {
 }
 
 onMounted(() => {
+  loadContent()
+  loadVisitTotal()
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) motion.value = false
   nextTick(() => {
     alignCoinToSlot()
@@ -219,7 +257,7 @@ onBeforeUnmount(() => {
               <div v-if="!arcadeReady" class="static-screen" aria-live="polite"><canvas ref="staticCanvas" class="static-canvas" aria-hidden="true"></canvas><div></div><p>COIN ACCEPTED</p><small>SYNCING CRT SIGNAL...</small></div>
               <template v-else>
                 <p class="eyebrow">PERSONAL COMPUTING UNIT</p>
-                <h1 id="arcade-title">{{ screenCopies[screenCopyIndex].title }}<br />PLAYER {{ String(startCount).padStart(3, '0') }}</h1>
+                <h1 id="arcade-title">{{ screenCopies[screenCopyIndex].title }}<br />PLAYER <span class="visit-count" :class="{ bump: countBump }">{{ String(startCount).padStart(3, '0') }}</span></h1>
                 <p class="screen-subtitle">{{ screenCopies[screenCopyIndex].subtitle }}</p>
                 <button class="start-button" type="button" @click="enterSystem">
                   <span class="button-mark">▶</span>
@@ -290,9 +328,9 @@ onBeforeUnmount(() => {
             <div class="directory-list"><p class="eyebrow">INDEX</p><button v-for="section in sections.slice(1)" :key="section.id" type="button" @click="navigate(section.id)"><span>{{ section.label }}/</span><small>{{ section.command }}</small><b>↗</b></button></div>
             </section>
 
-            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / POSTS</p><h2>WRITING</h2><span>{{ mockPosts.length.toString().padStart(2, '0') }} ENTRIES</span></div><article v-for="post in mockPosts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="Open post">↗</button></article></section>
+            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / POSTS</p><h2>WRITING</h2><span>{{ posts.length.toString().padStart(2, '0') }} ENTRIES</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">NO ENTRIES YET</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="Open post">↗</button></article></section>
 
-            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / PROJECTS</p><h2>SELECTED WORK</h2><span>{{ mockProjects.length.toString().padStart(2, '0') }} REPOSITORIES</span></div><article v-for="project in mockProjects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="Open repository">↗</button></article></section>
+            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">DIRECTORY / PROJECTS</p><h2>SELECTED WORK</h2><span>{{ projects.length.toString().padStart(2, '0') }} REPOSITORIES</span></div><article v-for="project in projects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="Open repository">↗</button></article></section>
 
             <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">FILE / ABOUT.MD</p><h2>HELLO, I'M<br />ABING.</h2><div><p>I am a developer interested in dependable backend systems and calm, precise interfaces.</p><p>This is where I document the work: what I am making, how the pieces fit, and the lessons that survive the first implementation.</p><a href="mailto:hello@example.com">hello@example.com ↗</a></div></section>
 
