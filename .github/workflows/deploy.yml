@@ -9,9 +9,6 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -29,18 +26,18 @@ jobs:
           build-args: |
             VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
           tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
 
   deploy:
     needs: publish
     runs-on: ubuntu-latest
-    environment: production
+    environment: Production
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
-          IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.sha }}
           DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
