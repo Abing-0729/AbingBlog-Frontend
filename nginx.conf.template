@@ -8,7 +8,7 @@ server {
     # 健康检查：供 Docker HEALTHCHECK 与部署脚本 curl 使用
     location = /healthz {
         access_log off;
-        add_header Content-Type text/plain;
+        default_type text/plain;
         return 200 "ok";
     }
 
