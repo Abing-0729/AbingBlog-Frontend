@@ -38,6 +38,18 @@ jobs:
     environment: Production
     steps:
       - uses: actions/checkout@v4
+      - name: Ensure deploy directory exists
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -eux
+            id
+            sudo mkdir -p /opt/abingblog-frontend
+            sudo chown -R "$(id -un):$(id -gn)" /opt/abingblog-frontend
+            ls -ld /opt/abingblog-frontend
       - name: Copy compose file to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -45,12 +57,12 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: docker-compose.prod.yml
-          target: ${{ secrets.FRONTEND_DEPLOY_PATH }}
+          target: /opt/abingblog-frontend
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
           IMAGE: ${{ env.IMAGE_REPO }}:${{ github.sha }}
-          DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
+          DEPLOY_PATH: /opt/abingblog-frontend
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_PORT: ${{ vars.FRONTEND_PORT || '8081' }}
