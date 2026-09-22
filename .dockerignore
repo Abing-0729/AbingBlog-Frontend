@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+.claude
+*.log
+.env
+.env.*
+!.env.development
+Dockerfile
+docker-compose*.yml
+nginx.conf
