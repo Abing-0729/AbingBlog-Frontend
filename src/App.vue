@@ -4,6 +4,7 @@ import { siteConfig } from './config/site'
 import { contentService } from './services/content'
 import { clearSession } from './services/admin'
 import AdminView from './admin/AdminView.vue'
+import SiteBeian from './components/SiteBeian.vue'
 import type { PostSummary, ProjectSummary } from './types/content'
 
 type Section = 'home' | 'posts' | 'projects' | 'about' | 'settings'
@@ -32,12 +33,24 @@ const startCount = ref(0)
 const startRecorded = ref(false)
 const countBump = ref(false)
 
+// 安全解析响应 JSON：空响应或非 JSON 内容返回 null，避免 response.json() 抛 "Unexpected end of JSON input"。
+async function readJson<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return null
+  }
+}
+
 // 进入街机屏幕时读取总浏览量（只读，不自增）。
 async function loadVisitTotal() {
   try {
     const response = await fetch(`${siteConfig.apiBaseUrl}/visits`)
-    const payload = await response.json() as { code: number; data?: { start_count: number } }
-    if (response.ok && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+    if (!response.ok) return
+    const payload = await readJson<{ code: number; data?: { start_count: number } }>(response)
+    if (payload && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
   } catch {
     // 拿不到总量就保持 0，点 START 时仍会本地兜底 +1。
   }
@@ -60,6 +73,23 @@ async function loadContent() {
     contentError.value = error instanceof Error ? error.message : '内容加载失败'
   }
 }
+
+// 项目列表：点击左侧展开主要内容，点击箭头跳转到项目链接（github 优先，其次 demo）。
+const expandedProject = ref<string | null>(null)
+
+function toggleProject(slug: string) {
+  expandedProject.value = expandedProject.value === slug ? null : slug
+}
+
+function projectUrl(project: ProjectSummary) {
+  return project.githubUrl ?? project.demoUrl ?? ''
+}
+
+function openProject(project: ProjectSummary) {
+  const url = projectUrl(project)
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 const screenThemeIndex = ref(0)
 const screenCopyIndex = ref(0)
 const screenThemes = ['mono', 'amber', 'blue'] as const
@@ -100,8 +130,8 @@ async function enterSystem() {
     startRecorded.value = true
     try {
       const response = await fetch(`${siteConfig.apiBaseUrl}/visits/start`, { method: 'POST' })
-      const payload = await response.json() as { code: number; data?: { start_count: number } }
-      if (response.ok && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+      const payload = await readJson<{ code: number; data?: { start_count: number } }>(response)
+      if (response.ok && payload && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
       else startCount.value += 1
     } catch {
       startCount.value += 1
@@ -145,8 +175,8 @@ async function loginAdmin() {
       body: JSON.stringify({ username: adminUsername.value, password: adminPassword.value }),
     })
     // 后端只返回 token（无 expires_in），过期靠 admin 请求的 401 兜底
-    const payload = await response.json() as { code: number; message: string; data?: { token: string } }
-    if (!response.ok || payload.code !== 0 || !payload.data?.token) throw new Error(payload.message || '登录失败')
+    const payload = await readJson<{ code: number; message: string; data?: { token: string } }>(response)
+    if (!response.ok || !payload || payload.code !== 0 || !payload.data?.token) throw new Error(payload?.message || `登录失败 (${response.status})`)
     localStorage.setItem('abing_access_token', payload.data.token)
     adminLoginOpen.value = false
     isAdminMode.value = true
@@ -299,6 +329,7 @@ onBeforeUnmount(() => {
         <div class="machine-foot"><span></span><i></i><span></span></div>
       </div>
       <p class="entry-instruction">ONE CREDIT REQUIRED · START FROM SCREEN</p>
+      <div class="entry-beian"><SiteBeian /></div>
       <div v-if="adminLoginOpen" class="admin-login" role="dialog" aria-modal="true" aria-labelledby="admin-login-title">
         <button class="admin-login-close" type="button" aria-label="Close administrator login" @click="adminLoginOpen = false">×</button>
         <p class="eyebrow">SERVICE ACCESS / NODE 01</p>
@@ -347,9 +378,9 @@ onBeforeUnmount(() => {
 
             <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 文章</p><h2>文章</h2><span>共 {{ posts.length }} 篇</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">暂无文章</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="打开文章" aria-label="打开文章">↗</button></article></section>
 
-            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row"><div><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button type="button" title="打开仓库" aria-label="打开仓库">↗</button></article></section>
+            <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row" :class="{ expanded: expandedProject === project.slug }"><div class="project-main" role="button" tabindex="0" :aria-expanded="expandedProject === project.slug" @click="toggleProject(project.slug)" @keydown.enter.prevent="toggleProject(project.slug)" @keydown.space.prevent="toggleProject(project.slug)"><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button class="project-link" type="button" :title="projectUrl(project) ? '打开项目链接' : '暂无链接'" aria-label="打开项目链接" :disabled="!projectUrl(project)" @click="openProject(project)">↗</button><div v-if="expandedProject === project.slug" class="project-detail"><p class="project-detail-desc">{{ project.detail }}</p><p class="project-detail-stack">{{ project.stack }}</p><div class="project-detail-links"><a v-if="project.githubUrl" :href="project.githubUrl" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a v-if="project.demoUrl" :href="project.demoUrl" target="_blank" rel="noopener noreferrer">演示 ↗</a></div></div></article></section>
 
-            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />ABING.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过第一版实现的教训。</p><a href="mailto:hello@example.com">hello@example.com ↗</a></div></section>
+            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />ABING.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过第一版实现的教训。</p><a href="mailto:2509094405@qq.com">2509094405@qq.com ↗</a></div></section>
 
             <section v-else class="settings-view"><div class="view-title"><p class="eyebrow">系统 / 显示</p><h2>设置</h2></div><label class="setting-row"><span>扫描线</span><input v-model="scanlines" type="checkbox" /><i></i></label><label class="setting-row"><span>动画</span><input v-model="motion" type="checkbox" /><i></i></label><label class="setting-row range-row"><span>字号 <b>{{ fontSize }}PX</b></span><input v-model="fontSize" type="range" min="13" max="19" /></label><button class="reset-intro" type="button" @click="replayIntro">重播启动动画</button></section>
           </div>
@@ -360,7 +391,7 @@ onBeforeUnmount(() => {
           </aside>
         </div>
         <form class="command-bar" @submit.prevent="submitCommand"><span>abing@blog:{{ promptPath }}$</span><input v-model="command" aria-label="终端命令" autocomplete="off" placeholder="输入命令" /><b></b></form>
-        <footer class="site-footer"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ siteConfig.icp }}</a></footer>
+        <footer class="site-footer"><SiteBeian /></footer>
       </div>
     </section>
   </main>
