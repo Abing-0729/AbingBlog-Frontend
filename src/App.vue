@@ -360,6 +360,7 @@ onBeforeUnmount(() => {
           </aside>
         </div>
         <form class="command-bar" @submit.prevent="submitCommand"><span>abing@blog:{{ promptPath }}$</span><input v-model="command" aria-label="终端命令" autocomplete="off" placeholder="输入命令" /><b></b></form>
+        <footer class="site-footer"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ siteConfig.icp }}</a></footer>
       </div>
     </section>
   </main>

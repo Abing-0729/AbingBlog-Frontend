@@ -182,3 +182,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .terminal-workspace .eyebrow { color: #6b7361; }
 .terminal-workspace button:focus-visible, .terminal-workspace input:focus-visible, .terminal-workspace a:focus-visible { outline-color: #7c8f1f; }
 @media (max-width: 720px) { .rail { border-bottom-color: #dcdfd6; } }
+
+/* 页脚：工信部备案号固定展示，链接指向备案系统 */
+.site-footer { display: flex; align-items: center; justify-content: center; padding: 9px 20px; border-top: 1px solid #dcdfd6; background: #ffffff; }
+.site-footer a { color: #8a9184; font-size: 10px; text-decoration: none; }
+.site-footer a:hover { color: #5f7020; text-decoration: underline; }
