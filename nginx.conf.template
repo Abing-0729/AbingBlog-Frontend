@@ -12,16 +12,6 @@ server {
         return 200 "ok";
     }
 
-    # 后端 API 反向代理（生产上通常由宿主机 Nginx 直接反代到后端，这里作为容器兜底）
-    location /api/ {
-        proxy_pass ${BACKEND_ORIGIN};
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
     # SPA 前端：找不到的路径回退到 index.html
     location / {
         try_files $uri $uri/ /index.html;
