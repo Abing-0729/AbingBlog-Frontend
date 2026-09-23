@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
       <div class="terminal-main">
         <header class="terminal-topbar">
           <div class="crumb"><span class="live-dot"></span> abing@blog:<b>{{ promptPath }}</b>$</div>
-          <div class="topbar-actions"><span>UTC+8</span><span>系统在线</span><button type="button" title="重播启动动画" @click="replayIntro">↗</button></div>
+          <div class="topbar-actions"><span>UTC+8</span><span>online</span><button type="button" title="重播启动动画" @click="replayIntro">↗</button></div>
         </header>
 
         <div class="terminal-scroll">
@@ -368,7 +368,8 @@ onBeforeUnmount(() => {
             </div>
 
             <section v-if="current === 'home'" class="home-view">
-            <div class="home-heading"><p class="eyebrow">当前目录</p><h2>最新笔记</h2><p>构建系统、界面，以及值得留下的小东西。</p></div>
+            <div class="home-heading"><p class="eyebrow">当前目录</p><h2>最新笔记</h2><p>构建系统、界面、构思，以及值得留下的小东西。</p></div>
+            
             <div class="feature-grid">
               <article class="feature-note large-note" @click="navigate('posts')"><span class="note-label">最新 / 2026.09.06</span><h3>把个人博客做成<br />一个可阅读的系统</h3><p>关于克制的交互、内容优先，以及为什么入口不该抢走文章的注意力。</p><span class="note-link">阅读全文 ↗</span></article>
               <article class="feature-note status-note"><span class="note-label">现在</span><dl><div><dt>在做</dt><dd>AbingBlog</dd></div><div><dt>技术栈</dt><dd>Go / Vue / MySQL</dd></div><div><dt>在听</dt><dd>Deep Focus</dd></div></dl></article>
@@ -380,7 +381,7 @@ onBeforeUnmount(() => {
 
             <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row" :class="{ expanded: expandedProject === project.slug }"><div class="project-main" role="button" tabindex="0" :aria-expanded="expandedProject === project.slug" @click="toggleProject(project.slug)" @keydown.enter.prevent="toggleProject(project.slug)" @keydown.space.prevent="toggleProject(project.slug)"><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button class="project-link" type="button" :title="projectUrl(project) ? '打开项目链接' : '暂无链接'" aria-label="打开项目链接" :disabled="!projectUrl(project)" @click="openProject(project)">↗</button><div v-if="expandedProject === project.slug" class="project-detail"><p class="project-detail-desc">{{ project.detail }}</p><p class="project-detail-stack">{{ project.stack }}</p><div class="project-detail-links"><a v-if="project.githubUrl" :href="project.githubUrl" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a v-if="project.demoUrl" :href="project.demoUrl" target="_blank" rel="noopener noreferrer">演示 ↗</a></div></div></article></section>
 
-            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />ABING.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过第一版实现的教训。</p><a href="mailto:2509094405@qq.com">2509094405@qq.com ↗</a></div></section>
+            <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />阿滨.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过许多第一版实现的教训。</p><p>好的建议·别的想法...</p><a href="mailto:2509094405@qq.com">2509094405@qq.com ↗</a><p><a href="https://github.com/bingege-0729" target="_blank" rel="noopener noreferrer">GitHub ↗</a></p></div></section>
 
             <section v-else class="settings-view"><div class="view-title"><p class="eyebrow">系统 / 显示</p><h2>设置</h2></div><label class="setting-row"><span>扫描线</span><input v-model="scanlines" type="checkbox" /><i></i></label><label class="setting-row"><span>动画</span><input v-model="motion" type="checkbox" /><i></i></label><label class="setting-row range-row"><span>字号 <b>{{ fontSize }}PX</b></span><input v-model="fontSize" type="range" min="13" max="19" /></label><button class="reset-intro" type="button" @click="replayIntro">重播启动动画</button></section>
           </div>
