@@ -1,5 +1,8 @@
 import { siteConfig } from '../config/site'
 import type {
+  FriendLink,
+  FriendLinkInput,
+  FriendStatus,
   Article,
   ArticleInput,
   Category,
@@ -10,6 +13,8 @@ import type {
   Status,
   Tag,
   TagInput,
+  VisitLog,
+  VisitSummaryData,
 } from '../types/admin'
 
 // 后端统一响应信封；成功 code===0，失败 data 为 null（DELETE 成功时 data 也是 null）。
@@ -135,5 +140,27 @@ export const adminApi = {
   },
   deleteProject(id: number): Promise<void> {
     return request(`/admin/projects/${id}`, { method: 'DELETE' })
+  },
+
+  // 访客记录
+  listVisits(page = 1, pageSize = 20, keyword?: string): Promise<Paginated<VisitLog>> {
+    const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (keyword) query.set('keyword', keyword)
+    return request(`/admin/visits?${query}`)
+  },
+  visitSummary(): Promise<VisitSummaryData> {
+    return request('/admin/visits/summary')
+  },
+
+  // 友链（列表不分页，返回 {list}；PUT 带 status 即审核动作）
+  listFriendLinks(status?: FriendStatus): Promise<FriendLink[]> {
+    const query = status === undefined ? '' : `?status=${status}`
+    return request<{ list: FriendLink[] | null }>(`/admin/friend-links${query}`).then((data) => data.list ?? [])
+  },
+  updateFriendLink(id: number, input: FriendLinkInput): Promise<FriendLink> {
+    return request(`/admin/friend-links/${id}`, { method: 'PUT', body: JSON.stringify(input) })
+  },
+  deleteFriendLink(id: number): Promise<void> {
+    return request(`/admin/friend-links/${id}`, { method: 'DELETE' })
   },
 }

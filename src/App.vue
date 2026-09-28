@@ -2,12 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { siteConfig } from './config/site'
 import { contentService } from './services/content'
+import { friendLinkService } from './services/friendLink'
 import { clearSession } from './services/admin'
 import AdminView from './admin/AdminView.vue'
 import SiteBeian from './components/SiteBeian.vue'
-import type { PostSummary, ProjectSummary } from './types/content'
+import type { PostSummary, ProjectSummary, FriendLink } from './types/content'
 
-type Section = 'home' | 'posts' | 'projects' | 'about' | 'settings'
+type Section = 'home' | 'posts' | 'projects' | 'links' | 'about' | 'settings'
 
 const inArcade = ref(true)
 const isAdminMode = ref(false)
@@ -30,6 +31,7 @@ const loggingIn = ref(false)
 const controlFeedback = ref('SYSTEM READY')
 const activeControl = ref('')
 const startCount = ref(0)
+const guestCount = ref(0)
 const startRecorded = ref(false)
 const countBump = ref(false)
 
@@ -44,13 +46,17 @@ async function readJson<T>(response: Response): Promise<T | null> {
   }
 }
 
-// 进入街机屏幕时读取总浏览量（只读，不自增）。
+// 进入街机屏幕时读取总浏览量与独立访客数（只读，不自增）。
+// distinct_users 是后端 visit_logs 聚合出的"来过多少人"，后端没实现时静默降级为 0。
 async function loadVisitTotal() {
   try {
     const response = await fetch(`${siteConfig.apiBaseUrl}/visits`)
     if (!response.ok) return
-    const payload = await readJson<{ code: number; data?: { start_count: number } }>(response)
-    if (payload && payload.code === 0 && payload.data) startCount.value = payload.data.start_count
+    const payload = await readJson<{ code: number; data?: { start_count: number; distinct_users?: number } }>(response)
+    if (payload && payload.code === 0 && payload.data) {
+      startCount.value = payload.data.start_count
+      guestCount.value = payload.data.distinct_users ?? 0
+    }
   } catch {
     // 拿不到总量就保持 0，点 START 时仍会本地兜底 +1。
   }
@@ -60,17 +66,117 @@ const posts = ref<PostSummary[]>([])
 const projects = ref<ProjectSummary[]>([])
 const contentError = ref('')
 
+// —— 友链 ——
+const friendLinks = ref<FriendLink[]>([])      // 前台已上架
+const myLinks = ref<FriendLink[]>([])          // 我的提交（含待审核/已驳回）
+const linksError = ref('')                     // 我的友链区错误（前台列表失败并入 contentError）
+const linksLoaded = ref(false)                 // 只在首次进入友链页时拉一次我的提交
+const linkSaving = ref(false)
+const editingLinkId = ref<number | null>(null)
+const linkForm = ref({ name: '', url: '', avatar: '', description: '' })
+
+const FRIEND_STATUS_TEXT: Record<number, string> = { 0: '待审核', 1: '已上架', 2: '已驳回' }
+
+function friendStatusText(link: FriendLink): string {
+  return FRIEND_STATUS_TEXT[link.status] ?? '未知'
+}
+
+function openLink(url: string) {
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// 头像缺省：用站点名称首字符当徽标，避免空图位
+function linkBadge(link: FriendLink): string {
+  return (link.name.trim()[0] ?? '?').toUpperCase()
+}
+
 async function loadContent() {
   contentError.value = ''
   try {
-    const [postList, projectList] = await Promise.all([
+    const [postList, projectList, linkList] = await Promise.all([
       contentService.listPosts(),
       contentService.listProjects(),
+      friendLinkService.listApproved(),
     ])
     posts.value = postList
     projects.value = projectList
+    friendLinks.value = linkList
   } catch (error) {
     contentError.value = error instanceof Error ? error.message : '内容加载失败'
+  }
+}
+
+async function loadMyLinks() {
+  linksError.value = ''
+  try {
+    myLinks.value = await friendLinkService.listMine()
+  } catch (error) {
+    linksError.value = error instanceof Error ? error.message : '我的友链加载失败'
+  }
+}
+
+function resetLinkForm() {
+  editingLinkId.value = null
+  linkForm.value = { name: '', url: '', avatar: '', description: '' }
+}
+
+function editMyLink(link: FriendLink) {
+  editingLinkId.value = link.id
+  linkForm.value = {
+    name: link.name,
+    url: link.url,
+    avatar: link.avatar,
+    description: link.description,
+  }
+}
+
+async function submitLink() {
+  if (linkSaving.value) return
+  const name = linkForm.value.name.trim()
+  const url = linkForm.value.url.trim()
+  if (!name || !url) {
+    linksError.value = '站点名称和地址为必填项'
+    return
+  }
+  linkSaving.value = true
+  linksError.value = ''
+  const input = {
+    name,
+    url,
+    avatar: linkForm.value.avatar.trim(),
+    description: linkForm.value.description.trim(),
+    sort: 0,
+    status: 0 as const, // 后端忽略该值，提交一律待审核
+  }
+  try {
+    if (editingLinkId.value === null) await friendLinkService.create(input)
+    else await friendLinkService.update(editingLinkId.value, input)
+    resetLinkForm()
+    await loadMyLinks()
+  } catch (error) {
+    linksError.value = error instanceof Error ? error.message : '提交失败，请稍后重试'
+  } finally {
+    linkSaving.value = false
+  }
+}
+
+const confirmDeleteLinkId = ref<number | null>(null)
+
+async function deleteMyLink() {
+  const id = confirmDeleteLinkId.value
+  if (id === null || linkSaving.value) return
+  linkSaving.value = true
+  linksError.value = ''
+  try {
+    await friendLinkService.remove(id)
+    confirmDeleteLinkId.value = null
+    if (editingLinkId.value === id) resetLinkForm()
+    await loadMyLinks()
+  } catch (error) {
+    linksError.value = error instanceof Error ? error.message : '删除失败'
+    confirmDeleteLinkId.value = null
+  } finally {
+    linkSaving.value = false
   }
 }
 
@@ -118,6 +224,7 @@ const sections: { id: Section; label: string; command: string }[] = [
   { id: 'home', label: '首页', command: 'cd ~' },
   { id: 'posts', label: '文章', command: 'cd posts' },
   { id: 'projects', label: '项目', command: 'cd projects' },
+  { id: 'links', label: '友链', command: 'cd links' },
   { id: 'about', label: '关于', command: 'cat about.md' },
 ]
 
@@ -203,6 +310,10 @@ function backToSite() {
 
 function navigate(section: Section) {
   current.value = section
+  if (section === 'links' && !linksLoaded.value) {
+    linksLoaded.value = true
+    loadMyLinks()
+  }
   if (section !== 'settings') commandLog.value.push(`$ ${sections.find((item) => item.id === section)?.command ?? 'settings'}`)
 }
 
@@ -212,11 +323,12 @@ function submitCommand() {
   commandLog.value.push(`$ ${command.value}`)
   command.value = ''
 
-  if (raw === 'help') commandLog.value.push('可用命令：home 首页 / posts 文章 / projects 项目 / about 关于 / settings 设置 / clear 清屏')
+  if (raw === 'help') commandLog.value.push('可用命令：home 首页 / posts 文章 / projects 项目 / links 友链 / about 关于 / settings 设置 / clear 清屏')
   else if (raw === 'clear') commandLog.value = []
   else if (raw === 'home' || raw === 'cd ~') navigate('home')
   else if (raw.includes('post')) navigate('posts')
   else if (raw.includes('project')) navigate('projects')
+  else if (raw.includes('link') || raw.includes('friend')) navigate('links')
   else if (raw.includes('about')) navigate('about')
   else if (raw.includes('setting')) navigate('settings')
   else commandLog.value.push(`未找到命令：${raw}。试试 "help"`)
@@ -310,6 +422,9 @@ onBeforeUnmount(() => {
                   <span class="button-mark">▶</span>
                   {{ booting ? 'INITIALIZING...' : 'PRESS START' }}
                 </button>
+                <p class="screen-visitors" aria-label="累计访客与启动次数">
+                  GUESTS <b>{{ String(guestCount).padStart(3, '0') }}</b> · PLAYS <b>{{ String(startCount).padStart(3, '0') }}</b>
+                </p>
                 <p class="screen-status">{{ controlFeedback }} <span class="pulse-dot"></span></p>
               </template>
             </div>
@@ -380,6 +495,59 @@ onBeforeUnmount(() => {
             <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 文章</p><h2>文章</h2><span>共 {{ posts.length }} 篇</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">暂无文章</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="打开文章" aria-label="打开文章">↗</button></article></section>
 
             <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row" :class="{ expanded: expandedProject === project.slug }"><div class="project-main" role="button" tabindex="0" :aria-expanded="expandedProject === project.slug" @click="toggleProject(project.slug)" @keydown.enter.prevent="toggleProject(project.slug)" @keydown.space.prevent="toggleProject(project.slug)"><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button class="project-link" type="button" :title="projectUrl(project) ? '打开项目链接' : '暂无链接'" aria-label="打开项目链接" :disabled="!projectUrl(project)" @click="openProject(project)">↗</button><div v-if="expandedProject === project.slug" class="project-detail"><p class="project-detail-desc">{{ project.detail }}</p><p class="project-detail-stack">{{ project.stack }}</p><div class="project-detail-links"><a v-if="project.githubUrl" :href="project.githubUrl" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a v-if="project.demoUrl" :href="project.demoUrl" target="_blank" rel="noopener noreferrer">演示 ↗</a></div></div></article></section>
+
+            <section v-else-if="current === 'links'" class="links-view">
+              <div class="view-title"><p class="eyebrow">目录 / 友链</p><h2>友链</h2><span>共 {{ friendLinks.length }} 个站点</span></div>
+              <p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p>
+              <p v-else-if="!friendLinks.length" class="eyebrow">暂无友链，来做第一个交换链接的人</p>
+              <div v-else class="link-grid">
+                <a v-for="link in friendLinks" :key="link.id" class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
+                  <span class="link-avatar" aria-hidden="true">
+                    <img v-if="link.avatar" :src="link.avatar" :alt="link.name" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).remove()" />
+                    <b v-if="!link.avatar">{{ linkBadge(link) }}</b>
+                  </span>
+                  <span class="link-info">
+                    <strong>{{ link.name }}</strong>
+                    <small>{{ link.description || link.url }}</small>
+                  </span>
+                  <span class="link-go" aria-hidden="true">↗</span>
+                </a>
+              </div>
+
+              <div class="link-mine">
+                <div class="link-mine-head"><p class="eyebrow">我的提交 / MY LINKS</p><span>提交后需审核上架；修改会重新进入待审核</span></div>
+                <form class="link-form" @submit.prevent="submitLink">
+                  <label>站点名称<input v-model="linkForm.name" required maxlength="64" placeholder="比如：阿冰的小站" /></label>
+                  <label>站点地址<input v-model="linkForm.url" required maxlength="500" type="url" placeholder="https://example.com" /></label>
+                  <label>头像地址（可选）<input v-model="linkForm.avatar" maxlength="500" type="url" placeholder="https://.../avatar.png" /></label>
+                  <label class="full">一句话简介（可选）<input v-model="linkForm.description" maxlength="255" placeholder="这个博客写点什么" /></label>
+                  <div class="link-form-actions">
+                    <button class="link-submit" type="submit" :disabled="linkSaving">{{ linkSaving ? '提交中…' : (editingLinkId === null ? '提交友链' : '保存修改') }}</button>
+                    <button v-if="editingLinkId !== null" class="link-cancel" type="button" @click="resetLinkForm">取消编辑</button>
+                  </div>
+                </form>
+                <p v-if="linksError" class="login-error" role="alert">{{ linksError }}</p>
+                <p v-else-if="!myLinks.length" class="eyebrow">还没有提交过友链</p>
+                <div v-else class="link-mine-list">
+                  <div v-for="link in myLinks" :key="link.id" class="link-mine-row">
+                    <div class="link-mine-main">
+                      <strong>{{ link.name }}</strong>
+                      <small>{{ link.url }}</small>
+                    </div>
+                    <span :class="['friend-status', `friend-status-${link.status}`]">{{ friendStatusText(link) }}</span>
+                    <div class="link-mine-actions">
+                      <button type="button" :disabled="linkSaving" @click="editMyLink(link)">编辑</button>
+                      <button type="button" class="danger" :disabled="linkSaving" @click="confirmDeleteLinkId = link.id">删除</button>
+                    </div>
+                    <div v-if="confirmDeleteLinkId === link.id" class="confirm-bar" role="alert">
+                      <span>确定删除友链 <b>「{{ link.name }}」</b>？</span>
+                      <button type="button" :disabled="linkSaving" @click="deleteMyLink">确认删除</button>
+                      <button class="keep" type="button" @click="confirmDeleteLinkId = null">取消</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
             <section v-else-if="current === 'about'" class="about-view"><p class="eyebrow">文件 / ABOUT.MD</p><h2>你好，我是<br />阿滨.</h2><div><p>一个专注可靠后端系统与克制、精确界面的开发者。</p><p>这里记录我做的东西：正在构建什么、各个部分如何拼在一起，以及那些熬过许多第一版实现的教训。</p><p>好的建议·别的想法...</p><a href="mailto:2509094405@qq.com">2509094405@qq.com ↗</a><p><a href="https://github.com/bingege-0729" target="_blank" rel="noopener noreferrer">GitHub ↗</a></p></div></section>
 
