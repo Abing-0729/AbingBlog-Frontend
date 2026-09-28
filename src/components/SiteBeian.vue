@@ -4,6 +4,7 @@ import { siteConfig } from '../config/site'
 
 <template>
   <a class="beian-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ siteConfig.icp }}</a>
+  <!-- 公安备案号暂未取得，待审核通过后再启用
   <a class="beian-link" href="https://beian.mps.gov.cn/" target="_blank" rel="noopener noreferrer">
     <svg class="beian-shield" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 1.2 2 3.6v3.9c0 3.4 2.6 6 6 7.3 3.4-1.3 6-3.9 6-7.3V3.6L8 1.2Z" fill="#c8102e" />
@@ -11,4 +12,5 @@ import { siteConfig } from '../config/site'
     </svg>
     <span>{{ siteConfig.gongan }}</span>
   </a>
+  -->
 </template>
