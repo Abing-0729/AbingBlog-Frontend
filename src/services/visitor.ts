@@ -10,10 +10,23 @@ import { siteConfig } from '../config/site'
 const VISITOR_ID_KEY = 'abing_visitor_id'
 const VISITOR_NAME_KEY = 'abing_visitor_name'
 
+// crypto.randomUUID 只在安全上下文（HTTPS 或 localhost）下可用，
+// 纯 HTTP 环境下会是 undefined，这里加个降级兜底。
+function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 export function getVisitorId(): string {
   let id = localStorage.getItem(VISITOR_ID_KEY)
   if (!id) {
-    id = crypto.randomUUID()
+    id = generateUuid()
     localStorage.setItem(VISITOR_ID_KEY, id)
   }
   return id
