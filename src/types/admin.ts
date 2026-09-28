@@ -1,5 +1,8 @@
 export type Status = 'draft' | 'published'
 
+// —— 友链（与前台共用结构，从 content 类型再导出一次方便 admin 侧引用）——
+export type { FriendLink, FriendLinkInput, FriendStatus } from './content'
+
 export interface Paginated<T> {
   list: T[]
   total: number
@@ -79,4 +82,44 @@ export interface ProjectInput {
   demo_url: string
   sort: number
   status: Status
+}
+
+// —— 访客记录（对应后端 visit_logs / GET /admin/visits*）——
+
+export interface VisitLog {
+  id: number
+  visitor_key: string
+  nickname: string
+  path: string
+  ip: string
+  device: string
+  user_agent: string
+  created_at: string
+}
+
+export interface VisitorSummary {
+  visitor_key: string
+  nickname: string
+  device: string
+  ip: string
+  visits: number
+  last_seen_at: string
+}
+
+export interface TopPath {
+  path: string
+  visits: number
+}
+
+export interface VisitStats {
+  total: number
+  today: number
+  distinct_users: number
+  today_distinct: number
+}
+
+export interface VisitSummaryData {
+  stats: VisitStats
+  visitors: VisitorSummary[]
+  top_paths: TopPath[]
 }

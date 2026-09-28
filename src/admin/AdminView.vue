@@ -4,15 +4,19 @@ import ArticlePanel from './ArticlePanel.vue'
 import CategoryPanel from './CategoryPanel.vue'
 import TagPanel from './TagPanel.vue'
 import ProjectPanel from './ProjectPanel.vue'
+import VisitPanel from './VisitPanel.vue'
+import FriendLinkPanel from './FriendLinkPanel.vue'
 
 const emit = defineEmits<{ logout: []; back: [] }>()
 
-type AdminTab = 'articles' | 'categories' | 'tags' | 'projects'
+type AdminTab = 'articles' | 'categories' | 'tags' | 'projects' | 'friendlinks' | 'visits'
 const tabs: { id: AdminTab; label: string }[] = [
   { id: 'articles', label: '文章' },
   { id: 'categories', label: '分类' },
   { id: 'tags', label: '标签' },
   { id: 'projects', label: '项目' },
+  { id: 'friendlinks', label: '友链' },
+  { id: 'visits', label: '访客' },
 ]
 const tab = ref<AdminTab>('articles')
 
@@ -44,6 +48,8 @@ function onAuthExpired() {
     <ArticlePanel v-if="tab === 'articles'" @auth-expired="onAuthExpired" />
     <CategoryPanel v-else-if="tab === 'categories'" @auth-expired="onAuthExpired" />
     <TagPanel v-else-if="tab === 'tags'" @auth-expired="onAuthExpired" />
-    <ProjectPanel v-else @auth-expired="onAuthExpired" />
+    <ProjectPanel v-else-if="tab === 'projects'" @auth-expired="onAuthExpired" />
+    <FriendLinkPanel v-else-if="tab === 'friendlinks'" @auth-expired="onAuthExpired" />
+    <VisitPanel v-else @auth-expired="onAuthExpired" />
   </main>
 </template>

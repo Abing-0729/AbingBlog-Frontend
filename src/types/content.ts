@@ -14,3 +14,31 @@ export interface ProjectSummary {
   githubUrl?: string
   demoUrl?: string
 }
+
+// —— 友链（对应后端 friend_links 表，前台与"我的友链"共用一套结构）——
+
+// 审核状态机：0 待审核 → 管理员置 1 上架 / 2 驳回；访客修改后打回 0
+export type FriendStatus = 0 | 1 | 2
+
+export interface FriendLink {
+  id: number
+  name: string
+  avatar: string
+  url: string
+  description: string
+  status: FriendStatus
+  sort: number
+  owner_id: string
+  created_at: string
+  updated_at: string
+}
+
+// 提交/编辑友链的请求体（status 后端忽略，由审核决定）
+export interface FriendLinkInput {
+  name: string
+  avatar: string
+  url: string
+  description: string
+  sort: number
+  status: FriendStatus
+}

@@ -44,7 +44,14 @@ export function createApiContentService(fetcher: typeof fetch = fetch): ContentS
   async function get<T>(path: string): Promise<T> {
     const response = await fetcher(`${siteConfig.apiBaseUrl}${path}`)
     if (!response.ok) throw new Error(`API request failed: ${response.status}`)
-    const payload = await response.json() as ApiEnvelope<T>
+    const text = await response.text()
+    if (!text) throw new Error('API returned an empty response')
+    let payload: ApiEnvelope<T>
+    try {
+      payload = JSON.parse(text) as ApiEnvelope<T>
+    } catch {
+      throw new Error('API returned invalid JSON')
+    }
     if (payload.code !== 0) throw new Error(payload.message)
     return payload.data
   }
