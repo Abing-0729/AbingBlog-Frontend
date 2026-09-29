@@ -74,6 +74,14 @@ function formatTime(iso: string): string {
   return iso.replace('T', ' ').slice(0, 16)
 }
 
+// 规整 IPv6 回环/映射地址，避免把 ::1 / ::ffff:1.2.3.4 这类地址当"乱码"展示
+function formatIp(ip: string): string {
+  if (!ip) return '—'
+  if (ip === '::1') return '127.0.0.1'
+  if (ip.startsWith('::ffff:')) return ip.slice(7)
+  return ip
+}
+
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 onMounted(() => {
@@ -122,8 +130,8 @@ onMounted(() => {
           <tbody>
             <tr v-for="visitor in summary.visitors" :key="visitor.visitor_key">
               <td class="visit-nick">{{ visitorLabel(visitor) }}</td>
-              <td class="visit-device">{{ visitor.device || '未知设备' }}</td>
-              <td class="visit-ip">{{ visitor.ip || '—' }}</td>
+              <td class="visit-device">{{ deviceText(visitor) }}</td>
+              <td class="visit-ip">{{ formatIp(visitor.ip) }}</td>
               <td class="visit-num">{{ visitor.visits }}</td>
               <td class="visit-time">{{ formatTime(visitor.last_seen_at) }}</td>
             </tr>
@@ -164,7 +172,7 @@ onMounted(() => {
           <td class="visit-time">{{ formatTime(log.created_at) }}</td>
           <td class="visit-nick">{{ visitorLabel(log) }}</td>
           <td class="visit-device" :title="log.user_agent">{{ deviceText(log) }}</td>
-          <td class="visit-ip">{{ log.ip || '—' }}</td>
+          <td class="visit-ip">{{ formatIp(log.ip) }}</td>
           <td class="visit-path">{{ log.path }}</td>
         </tr>
       </tbody>

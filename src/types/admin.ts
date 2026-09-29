@@ -39,6 +39,7 @@ export interface Article {
   title: string
   summary: string
   cover: string
+  url: string
   content?: string
   category: { id: number; name: string; slug: string } | null
   tags: { id: number; name: string }[]
@@ -54,6 +55,7 @@ export interface ArticleInput {
   content: string
   summary: string
   cover: string
+  url: string
   category_id: number
   tag_ids: number[]
   status: Status
@@ -101,6 +103,7 @@ export interface VisitorSummary {
   visitor_key: string
   nickname: string
   device: string
+  user_agent: string
   ip: string
   visits: number
   last_seen_at: string

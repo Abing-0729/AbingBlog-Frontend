@@ -21,7 +21,7 @@ const tags = ref<Tag[]>([])
 const formOpen = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
-  title: '', content: '', summary: '', cover: '',
+  title: '', content: '', summary: '', cover: '', url: '',
   category_id: 0, tag_ids: [] as number[], status: 'draft' as Status,
 })
 const confirmDelete = ref<Article | null>(null)
@@ -52,7 +52,7 @@ watch(statusFilter, () => { page.value = 1; load() })
 function openCreate() {
   formOpen.value = true
   editingId.value = null
-  form.value = { title: '', content: '', summary: '', cover: '', category_id: 0, tag_ids: [], status: 'draft' }
+  form.value = { title: '', content: '', summary: '', cover: '', url: '', category_id: 0, tag_ids: [], status: 'draft' }
   error.value = ''
 }
 
@@ -64,7 +64,7 @@ async function openEdit(article: Article) {
     formOpen.value = true
     editingId.value = article.id
     form.value = {
-      title: full.title, content: full.content ?? '', summary: full.summary, cover: full.cover,
+      title: full.title, content: full.content ?? '', summary: full.summary, cover: full.cover, url: full.url,
       category_id: full.category?.id ?? 0, tag_ids: full.tags.map((tag) => tag.id), status: full.status,
     }
   } catch (e) {
@@ -84,7 +84,7 @@ async function save() {
   error.value = ''
   const input = {
     title: form.value.title.trim(), content: form.value.content,
-    summary: form.value.summary.trim(), cover: form.value.cover.trim(),
+    summary: form.value.summary.trim(), cover: form.value.cover.trim(), url: form.value.url.trim(),
     category_id: form.value.category_id, tag_ids: form.value.tag_ids, status: form.value.status,
   }
   try {
@@ -169,6 +169,7 @@ onMounted(async () => {
       <label>摘要<textarea v-model="form.summary" class="short" placeholder="一段话摘要"></textarea></label>
       <div class="admin-form-grid">
         <label>封面链接<input v-model="form.cover" placeholder="https://…（可选）" /></label>
+        <label>原文外链<input v-model="form.url" placeholder="https://…（可选，如掘金/知乎原文）" /></label>
         <label>分类<select v-model.number="form.category_id"><option :value="0">— 未分类 —</option><option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
         <div class="full">
           <span class="eyebrow">标签</span>
