@@ -6,7 +6,8 @@ import { friendLinkService } from './services/friendLink'
 import { clearSession } from './services/admin'
 import AdminView from './admin/AdminView.vue'
 import SiteBeian from './components/SiteBeian.vue'
-import type { PostSummary, ProjectSummary, FriendLink } from './types/content'
+import type { PostDetail, PostSummary, ProjectSummary, FriendLink } from './types/content'
+import { renderMarkdown } from './utils/markdown'
 
 type Section = 'home' | 'posts' | 'projects' | 'links' | 'about' | 'settings'
 
@@ -194,6 +195,34 @@ function projectUrl(project: ProjectSummary) {
 function openProject(project: ProjectSummary) {
   const url = projectUrl(project)
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// 文章列表：点击左侧展开正文（按需拉取详情，缓存避免重复请求），点击箭头跳转到原文外链。
+const expandedPost = ref<string | null>(null)
+const postDetails = ref<Record<string, PostDetail>>({})
+const postLoading = ref<Record<string, boolean>>({})
+const postDetailError = ref('')
+
+async function togglePost(slug: string) {
+  if (expandedPost.value === slug) {
+    expandedPost.value = null
+    return
+  }
+  expandedPost.value = slug
+  if (postDetails.value[slug]) return
+  postLoading.value[slug] = true
+  postDetailError.value = ''
+  try {
+    postDetails.value[slug] = await contentService.getPost(slug)
+  } catch (error) {
+    postDetailError.value = error instanceof Error ? error.message : '正文加载失败'
+  } finally {
+    postLoading.value[slug] = false
+  }
+}
+
+function openPost(post: PostSummary) {
+  if (post.url) window.open(post.url, '_blank', 'noopener,noreferrer')
 }
 
 const screenThemeIndex = ref(0)
@@ -492,7 +521,7 @@ onBeforeUnmount(() => {
             <div class="directory-list"><p class="eyebrow">索引</p><button v-for="section in sections.slice(1)" :key="section.id" type="button" @click="navigate(section.id)"><span>{{ section.label }}/</span><small>{{ section.command }}</small><b>↗</b></button></div>
             </section>
 
-            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 文章</p><h2>文章</h2><span>共 {{ posts.length }} 篇</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">暂无文章</p><article v-for="post in posts" :key="post.slug" class="list-row"><time>{{ post.date }}</time><h3>{{ post.title }}</h3><span>{{ post.tag }}</span><button type="button" title="打开文章" aria-label="打开文章">↗</button></article></section>
+            <section v-else-if="current === 'posts'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 文章</p><h2>文章</h2><span>共 {{ posts.length }} 篇</span></div><p v-if="contentError" class="login-error" role="alert">{{ contentError }}</p><p v-else-if="!posts.length" class="eyebrow">暂无文章</p><article v-for="post in posts" :key="post.slug" class="post-row" :class="{ expanded: expandedPost === post.slug }"><div class="post-main" role="button" tabindex="0" :aria-expanded="expandedPost === post.slug" @click="togglePost(post.slug)" @keydown.enter.prevent="togglePost(post.slug)" @keydown.space.prevent="togglePost(post.slug)"><h3>{{ post.title }}</h3><p v-if="post.summary" class="post-summary">{{ post.summary }}</p></div><time class="post-date">{{ post.date }}</time><span class="post-tag">{{ post.tag }}</span><button class="post-link" type="button" :title="post.url ? '打开原文链接' : '暂无外链'" :aria-label="post.url ? '打开原文链接' : '暂无外链'" :disabled="!post.url" @click="openPost(post)">↗</button><div v-if="expandedPost === post.slug" class="post-detail"><p v-if="postLoading[post.slug]" class="post-detail-loading">加载正文…</p><p v-else-if="postDetailError" class="login-error" role="alert">{{ postDetailError }}</p><div v-else-if="postDetails[post.slug]" class="post-content" v-html="renderMarkdown(postDetails[post.slug]?.content ?? '')"></div></div></article></section>
 
             <section v-else-if="current === 'projects'" class="list-view"><div class="view-title"><p class="eyebrow">目录 / 项目</p><h2>项目</h2><span>共 {{ projects.length }} 个</span></div><article v-for="project in projects" :key="project.slug" class="project-row" :class="{ expanded: expandedProject === project.slug }"><div class="project-main" role="button" tabindex="0" :aria-expanded="expandedProject === project.slug" @click="toggleProject(project.slug)" @keydown.enter.prevent="toggleProject(project.slug)" @keydown.space.prevent="toggleProject(project.slug)"><h3>{{ project.name }}</h3><p>{{ project.detail }}</p></div><span>{{ project.stack }}</span><button class="project-link" type="button" :title="projectUrl(project) ? '打开项目链接' : '暂无链接'" aria-label="打开项目链接" :disabled="!projectUrl(project)" @click="openProject(project)">↗</button><div v-if="expandedProject === project.slug" class="project-detail"><p class="project-detail-desc">{{ project.detail }}</p><p class="project-detail-stack">{{ project.stack }}</p><div class="project-detail-links"><a v-if="project.githubUrl" :href="project.githubUrl" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a v-if="project.demoUrl" :href="project.demoUrl" target="_blank" rel="noopener noreferrer">演示 ↗</a></div></div></article></section>
 

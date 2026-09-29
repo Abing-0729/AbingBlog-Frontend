@@ -4,6 +4,16 @@ export interface PostSummary {
   title: string
   tag: string
   summary?: string
+  url?: string
+}
+
+// 文章详情：展开列表项时按需拉取（含 Markdown 正文）
+export interface PostDetail {
+  title: string
+  summary: string
+  content: string
+  cover: string
+  url: string
 }
 
 export interface ProjectSummary {
