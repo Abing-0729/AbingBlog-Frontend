@@ -7,7 +7,7 @@ import { clearSession } from './services/admin'
 import AdminView from './admin/AdminView.vue'
 import SiteBeian from './components/SiteBeian.vue'
 import type { PostDetail, PostSummary, ProjectSummary, FriendLink } from './types/content'
-import { renderMarkdown } from './utils/markdown'
+import { renderMarkdown, renderMermaid } from './utils/markdown'
 
 type Section = 'home' | 'posts' | 'projects' | 'links' | 'about' | 'settings'
 
@@ -209,11 +209,17 @@ async function togglePost(slug: string) {
     return
   }
   expandedPost.value = slug
-  if (postDetails.value[slug]) return
+  if (postDetails.value[slug]) {
+    await nextTick()
+    renderMermaid()
+    return
+  }
   postLoading.value[slug] = true
   postDetailError.value = ''
   try {
     postDetails.value[slug] = await contentService.getPost(slug)
+    await nextTick()
+    renderMermaid()
   } catch (error) {
     postDetailError.value = error instanceof Error ? error.message : '正文加载失败'
   } finally {
