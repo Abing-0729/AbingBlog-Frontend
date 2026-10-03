@@ -88,7 +88,10 @@ export function describeDevice(): string {
 // 后端 CORS 中间件的 Allow-Headers 必须放行它们。
 export function installVisitorHeaders(): void {
   const originalFetch = window.fetch.bind(window)
-  const marker = siteConfig.apiBaseUrl
+  // apiBaseUrl 可能是相对路径（/api/v1），也可能是绝对地址（https://api.example.com/api/v1）。
+  // 取 path 部分做前缀比对；绝对地址时再比对 host，跨主机部署也不会漏带/误带访客头。
+  const apiBase = new URL(siteConfig.apiBaseUrl, window.location.origin)
+  const apiPath = apiBase.pathname.replace(/\/+$/, '')
 
   window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     let url: string
@@ -96,7 +99,10 @@ export function installVisitorHeaders(): void {
     else if (input instanceof URL) url = input.href
     else url = input.url
 
-    const isApiRequest = new URL(url, window.location.origin).pathname.startsWith(marker)
+    const requestUrl = new URL(url, window.location.origin)
+    const isApiRequest =
+      requestUrl.origin === apiBase.origin &&
+      (requestUrl.pathname === apiPath || requestUrl.pathname.startsWith(`${apiPath}/`))
     if (!isApiRequest) return originalFetch(input, init)
 
     const headers = new Headers(init?.headers)
